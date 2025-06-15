@@ -1,0 +1,117 @@
+/* Main container styling */
+.main {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header styling */
+.header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.header h1 {
+    color: #1E88E5;
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.header p {
+    color: #666;
+    font-size: 1.1rem;
+}
+
+/* File uploader styling */
+.upload-container {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+    border: 2px dashed #1E88E5;
+}
+
+/* Data preview styling */
+.data-preview {
+    background-color: white;
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Chat interface styling */
+.chat-container {
+    background-color: white;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chat-message {
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border-radius: 10px;
+}
+
+.user-message {
+    background-color: #E3F2FD;
+    margin-left: 2rem;
+}
+
+.assistant-message {
+    background-color: #F5F5F5;
+    margin-right: 2rem;
+}
+
+/* Input styling */
+.chat-input {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    width: 100%;
+}
+
+/* Agent status indicators */
+.agent-status {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.agent {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.agent-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+
+.coordinator { background-color: #1E88E5; }
+.extractor { background-color: #43A047; }
+.researcher { background-color: #E53935; }
+
+/* Loading animation */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-radius: 50%;
+    border-top: 3px solid #1E88E5;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+} 
