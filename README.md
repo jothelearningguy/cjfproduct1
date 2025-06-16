@@ -14,7 +14,7 @@ A powerful chatbot application that allows users to upload CSV files and ask que
 
 - Frontend: Streamlit
 - Backend: Flask
-- AI: OpenAI GPT
+- AI: DeepSeek AI
 - Data Processing: Pandas
 
 ## Setup
@@ -30,9 +30,9 @@ cd cjfproduct1
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file in the project root and add your OpenAI API key:
+3. Create a `.env` file in the project root and add your DeepSeek API key:
 ```
-OPENAI_API_KEY=your_api_key_here
+DEEPSEEK_API_KEY=your_api_key_here
 ```
 
 4. Start the Flask server:
@@ -74,4 +74,4 @@ MIT License
 
 ## Note
 
-Make sure you have a valid OpenAI API key to use this application. The application uses GPT-3.5-turbo to process and answer questions about your data. 
+Make sure you have a valid DeepSeek API key to use this application. The application uses DeepSeek's chat model to process and answer questions about your data. 

@@ -1,73 +1,53 @@
-from openai import OpenAI
+import os
+import json
+import logging
 import pandas as pd
-from typing import List, Dict, Any
+from typing import Dict, List, Optional
+import requests
+from dotenv import load_dotenv
 
-class BaseAgent:
-    def __init__(self, client: OpenAI):
-        self.client = client
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    def get_response(self, messages: List[Dict[str, str]]) -> str:
-        response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
-        return response.choices[0].message.content
+class CSVAgent:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "CSV Chatbot"
+        }
+        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+        self.system_prompt = "A:Analyze CSV data and answer questions concisely."
 
-class CoordinatorAgent(BaseAgent):
-    def __init__(self, client: OpenAI):
-        super().__init__(client)
-        self.system_prompt = """You are the Coordinator Agent. Your role is to:
-        1. Understand the user's question
-        2. Determine which agent(s) should handle the request
-        3. Coordinate between the Information Extractor and Researcher agents
-        4. Synthesize the final response
-        Be concise and clear in your coordination."""
-
-    def coordinate(self, user_question: str, df_info: str) -> str:
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"User question: {user_question}\n\nDataset context:\n{df_info}"}
-        ]
-        return self.get_response(messages)
-
-class InformationExtractorAgent(BaseAgent):
-    def __init__(self, client: OpenAI):
-        super().__init__(client)
-        self.system_prompt = """You are the Information Extractor Agent. Your role is to:
-        1. Extract relevant information from the dataset
-        2. Perform data analysis and calculations
-        3. Identify patterns and relationships in the data
-        4. Provide factual information about the dataset
-        Focus on extracting and analyzing the data accurately."""
-
-    def extract_info(self, question: str, df: pd.DataFrame) -> str:
-        df_info = f"""
-        Dataset Information:
-        - Number of rows: {len(df)}
-        - Number of columns: {len(df.columns)}
-        - Column names: {', '.join(df.columns)}
-        - First few rows:
-        {df.head().to_string()}
-        """
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"Question: {question}\n\nData:\n{df_info}"}
-        ]
-        return self.get_response(messages)
-
-class ResearcherAgent(BaseAgent):
-    def __init__(self, client: OpenAI):
-        super().__init__(client)
-        self.system_prompt = """You are the Researcher Agent. Your role is to:
-        1. Provide context and insights about the data
-        2. Explain patterns and trends
-        3. Make connections between different aspects of the data
-        4. Offer interpretations and implications
-        Focus on providing deeper understanding and insights."""
-
-    def research(self, question: str, extracted_info: str) -> str:
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"Question: {question}\n\nExtracted Information:\n{extracted_info}"}
-        ]
-        return self.get_response(messages) 
+    def process_question(self, question: str, df: pd.DataFrame) -> str:
+        try:
+            # Create compact data representation
+            sample_df = df.head(2)
+            df_info = f"n={len(df)} c={len(df.columns)} cols={','.join(df.columns)} d={sample_df.to_string(index=False, max_colwidth=15)}"
+            
+            # Single API call with optimized prompt
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": f"q:{question} d:{df_info}"}
+            ]
+            
+            logger.info("Making API call to OpenRouter")
+            response = requests.post(
+                self.base_url,
+                headers=self.headers,
+                json={
+                    "model": "anthropic/claude-3-opus-20240229",
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 100  # Reduced to minimum needed
+                }
+            )
+            response.raise_for_status()
+            logger.info("Successfully received response from OpenRouter")
+            return response.json()["choices"][0]["message"]["content"]
+            
+        except Exception as e:
+            logger.error(f"Error in OpenRouter API call: {str(e)}")
+            raise 

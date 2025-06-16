@@ -1,9 +1,8 @@
 import streamlit as st
-import pandas as pd
 import requests
 import json
-from io import StringIO
-import time
+import pandas as pd
+import io
 
 # Set page config
 st.set_page_config(
@@ -39,112 +38,69 @@ with st.sidebar:
 # Main content
 st.markdown('<div class="header">', unsafe_allow_html=True)
 st.title("CSV Chatbot 🤖")
-st.write("Upload a CSV file and ask questions about its contents!")
+st.write("Upload a CSV file and ask questions about your data!")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Initialize session state
-if 'df' not in st.session_state:
-    st.session_state.df = None
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
 if 'session_id' not in st.session_state:
     st.session_state.session_id = None
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
-# File uploader
-st.markdown('<div class="upload-container">', unsafe_allow_html=True)
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-st.markdown('</div>', unsafe_allow_html=True)
+# File upload
+uploaded_file = st.file_uploader("Upload your CSV file", type=['csv'])
 
 if uploaded_file is not None:
     try:
         # Upload file to server
-        files = {"file": uploaded_file}
+        files = {'file': uploaded_file}
         response = requests.post(f"{API_URL}/upload", files=files)
-        response.raise_for_status()
         
-        data = response.json()
-        st.session_state.session_id = data["session_id"]
-        
-        # Display the preview
-        st.markdown('<div class="data-preview">', unsafe_allow_html=True)
-        st.subheader("Preview of your data")
-        st.dataframe(pd.DataFrame(data["preview"]))
-        
-        st.subheader("Columns in your dataset")
-        st.write(data["columns"])
-        st.markdown('</div>', unsafe_allow_html=True)
-        
+        if response.status_code == 200:
+            data = response.json()
+            st.session_state.session_id = data['session_id']
+            st.success("File uploaded successfully!")
+        else:
+            st.error(f"Error uploading file: {response.json().get('error', 'Unknown error')}")
+            
     except Exception as e:
         st.error(f"Error uploading file: {str(e)}")
 
 # Chat interface
-if st.session_state.session_id is not None:
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-    st.subheader("Ask questions about your data")
-    
-    # Agent status indicators
-    st.markdown('<div class="agent-status">', unsafe_allow_html=True)
-    st.markdown("""
-        <div class="agent">
-            <div class="agent-icon coordinator"></div>
-            <span>Coordinator</span>
-        </div>
-        <div class="agent">
-            <div class="agent-icon extractor"></div>
-            <span>Extractor</span>
-        </div>
-        <div class="agent">
-            <div class="agent-icon researcher"></div>
-            <span>Researcher</span>
-        </div>
-    """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Display chat history
+if st.session_state.session_id:
+    # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
+            st.write(message["content"])
+    
     # Chat input
     if prompt := st.chat_input("Ask a question about your data"):
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Show processing state
-        st.session_state.processing = True
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            message_placeholder.markdown("🤔 Thinking...")
-
-            try:
-                # Send question to server
-                response = requests.post(
-                    f"{API_URL}/ask",
-                    json={
-                        "question": prompt,
-                        "session_id": st.session_state.session_id
-                    }
-                )
-                response.raise_for_status()
-                
-                data = response.json()
-                final_response = data["response"]
-
-                # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": final_response})
-                message_placeholder.markdown(final_response)
-                
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-                st.info("Please make sure the server is running and accessible.")
+            st.write(prompt)
             
-            finally:
-                st.session_state.processing = False
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        try:
+            # Send question to server
+            response = requests.post(
+                f"{API_URL}/ask",
+                json={
+                    'question': prompt,
+                    'session_id': st.session_state.session_id
+                }
+            )
+            
+            if response.status_code == 200:
+                answer = response.json()['response']
+                # Add assistant message to chat history
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                with st.chat_message("assistant"):
+                    st.write(answer)
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                st.error(f"Error: {error_msg}")
+                
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
 else:
     st.info("Please upload a CSV file to start asking questions!") 

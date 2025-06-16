@@ -1,104 +1,123 @@
+import os
+import json
+import logging
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import pandas as pd
 import io
-from agents import CoordinatorAgent, InformationExtractorAgent, ResearcherAgent
-from openai import OpenAI
+from agents import CSVAgent
 import os
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
 app = Flask(__name__)
-CORS(app)
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-# Initialize agents
-coordinator = CoordinatorAgent(client)
-extractor = InformationExtractorAgent(client)
-researcher = ResearcherAgent(client)
-
-# Store data in memory (in production, use a proper database)
+# Initialize data store
 data_store = {}
+
+try:
+    # Get API key from environment variable
+    api_key = os.getenv('OPENROUTER_API_KEY')
+    if not api_key:
+        raise Exception("OpenRouter API key not found in environment variables")
+        
+    # Initialize the CSV agent
+    csv_agent = CSVAgent(api_key)
+    logger.info("Successfully validated OpenRouter API key")
+    
+except Exception as e:
+    logger.error(f"Failed to initialize OpenRouter client: {str(e)}")
+    csv_agent = None
+    logger.warning("Running in fallback mode without AI capabilities")
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
+        logger.info("Received file upload request")
         if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
-        
+            return jsonify({'error': 'No file part'}), 400
+            
         file = request.files['file']
         if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+            return jsonify({'error': 'No selected file'}), 400
+            
+        if not file.filename.endswith('.csv'):
+            return jsonify({'error': 'File must be a CSV'}), 400
+            
+        logger.info(f"Processing file: {file.filename}")
         
-        # Read the uploaded file
-        contents = file.read()
-        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        # Read the file content
+        content = file.read()
+        if not content:
+            return jsonify({'error': 'File is empty'}), 400
+            
+        # Try different encodings and delimiters
+        encodings = ['utf-8', 'latin1', 'cp1252']
+        delimiters = [',', ';', '\t']
         
-        # Generate a session ID (in production, use a proper session management)
-        session_id = str(hash(contents))
+        for encoding in encodings:
+            try:
+                logger.info(f"Trying to read file with {encoding} encoding")
+                content_str = content.decode(encoding)
+                
+                for delimiter in delimiters:
+                    try:
+                        logger.info(f"Trying delimiter: {delimiter}")
+                        df = pd.read_csv(io.StringIO(content_str), delimiter=delimiter)
+                        if not df.empty and len(df.columns) > 0:
+                            logger.info(f"Successfully read file with {encoding} encoding and {delimiter} delimiter")
+                            
+                            # Generate a unique session ID
+                            session_id = hash(file.filename + str(pd.Timestamp.now()))
+                            data_store[session_id] = df
+                            
+                            logger.info(f"File uploaded successfully. Session ID: {session_id}")
+                            return jsonify({
+                                'message': 'File uploaded successfully',
+                                'session_id': session_id
+                            })
+                    except Exception as e:
+                        logger.info(f"Failed with delimiter {delimiter}: {str(e)}")
+                        continue
+                        
+            except UnicodeDecodeError:
+                continue
+                
+        logger.error("Failed to read CSV with any encoding or delimiter")
+        return jsonify({'error': 'Could not read CSV file. Please ensure it is a valid CSV file.'}), 400
         
-        # Store the dataframe
-        data_store[session_id] = df
-        
-        return jsonify({
-            'session_id': session_id,
-            'message': 'File uploaded successfully',
-            'preview': df.head().to_dict(),
-            'columns': df.columns.tolist()
-        })
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error(f"Error in file upload: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/ask', methods=['POST'])
 def ask_question():
     try:
         data = request.get_json()
-        if not data or 'question' not in data or 'session_id' not in data:
-            return jsonify({'error': 'Missing question or session_id'}), 400
+        question = data.get('question', '')
+        session_id = data.get('session_id')
         
-        question = data['question']
-        session_id = data['session_id']
-        
-        if session_id not in data_store:
-            return jsonify({'error': 'Session not found'}), 404
-        
+        if not question:
+            return jsonify({'error': 'No question provided'}), 400
+            
+        if not session_id or session_id not in data_store:
+            return jsonify({'error': 'No file uploaded or invalid session'}), 400
+            
         df = data_store[session_id]
+        logger.info(f"Processing question: {question}")
+        logger.info(f"Session ID: {session_id}")
         
-        # Prepare dataset information
-        df_info = f"""
-        Dataset Information:
-        - Number of rows: {len(df)}
-        - Number of columns: {len(df.columns)}
-        - Column names: {', '.join(df.columns)}
-        - First few rows:
-        {df.head().to_string()}
-        """
-
-        # Step 1: Coordinator determines how to handle the question
-        coordination_plan = coordinator.coordinate(question, df_info)
+        # Process the question using the single-call agent
+        response = csv_agent.process_question(question, df)
+        return jsonify({'response': response})
         
-        # Step 2: Information Extractor gets the raw data and analysis
-        extracted_info = extractor.extract_info(question, df)
-        
-        # Step 3: Researcher provides insights and context
-        research_insights = researcher.research(question, extracted_info)
-        
-        # Step 4: Coordinator synthesizes the final response
-        final_response = coordinator.coordinate(
-            f"Original question: {question}\n\nExtracted information: {extracted_info}\n\nResearch insights: {research_insights}",
-            df_info
-        )
-
-        return jsonify({
-            'response': final_response,
-            'status': 'success'
-        })
     except Exception as e:
+        logger.error(f"Error processing question: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
